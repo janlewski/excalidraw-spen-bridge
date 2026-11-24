@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Delivered only while this activity is in the foreground. version is mandatory in Samsung's schema. -->
+<remote-actions version="1.2" actionset_label="@string/air_actions_label">
+    <action
+        id="open_excalidraw_menu"
+        label="@string/open_menu_label"
+        priority="1"
+        trigger_key="F8"
+        repeatable="false">
+        <preference name="gesture" value="click" />
+        <preference name="button_only" value="true" />
+    </action>
+</remote-actions>
