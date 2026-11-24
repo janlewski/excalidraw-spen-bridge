@@ -4,11 +4,9 @@ Reviewed in November 2026 from Samsung’s S Pen docs, Android’s input and sto
 
 ## Verdict
 
-Use this app as a screen you open, not as a process that stays alive.
+The bridge process stays running. LibrePods does this with a sticky foreground service and a quiet ongoing notification, and this app uses that same shape: `START_STICKY`, a low-importance notification, and a boot receiver that starts the service after unlock. While it waits it does not poll, scan, or hold a wake lock. A localhost event stream on `127.0.0.1:47631` is how the plugin receives a command without the vault file and without this app taking the screen.
 
-It should be able to write one signed `open-menu` file into a device-storage Obsidian vault, and it can show native stylus button bits for a pen that is touching this screen. The switch **Open this screen after the tablet restarts** is off until you turn it on. It asks Android to open this screen once after unlock. It does not leave a listener running.
-
-A resident listener is worse. Samsung delivers S Pen button events and Air Actions only to the resumed foreground app, and its Remote SDK FAQ says those listeners must be unregistered when the activity pauses. A foreground service, a sticky background service, or a process kept in “Never sleeping” is still not that resumed app. Obsidian would keep the pen, this process would stay awake, and the barrel button would still be missing inside the WebView.
+That resident process still does not receive the S Pen button while Obsidian is the app on screen. Samsung delivers Air Actions and Remote SDK events only to the resumed foreground app. The service keeps the channel alive. It does not move the pen events.
 
 Holding the barrel button while drawing in Obsidian cannot become a temporary eraser through this companion.
 
@@ -16,16 +14,16 @@ Holding the barrel button while drawing in Obsidian cannot become a temporary er
 
 - Choose a vault folder with the system picker. The app stores a persistable tree grant and requests no broad storage, network, overlay, or accessibility permission.
 - **Send signed test** writes `.obsidian/plugins/excalidraw-stylus-controls/spen-bridge/pending.json`. The write goes to `pending-incoming.json` first. That name ends in `.json` because Android’s `FileUtils.splitFileName` appends the MIME extension when the display name does not already match `application/json`.
-- **Copy pairing code** puts the local 32-byte secret on the clipboard. The plugin does not read the file yet, and this app does not show the secret in the status line.
+- **Copy pairing code** puts the local 32-byte secret on the clipboard as base64url. The plugin uses that token on the localhost stream. The status line does not print the secret.
+- With **Keep the bridge running** on, leaving the app leaves a quiet “S Pen bridge” notification. The notification action **Open menu** writes the vault file and pushes the same signed JSON to every connected plugin. After a restart the boot receiver starts the service again. **Allow unrestricted battery** is the Samsung step that stops the system from freezing that service.
 - Drawing on this screen logs action, tool, button bits, and pressure. Coordinates are omitted. A barrel press that the digitizer reports includes `STYLUS_PRIMARY` (`MotionEvent.BUTTON_STYLUS_PRIMARY`, value 32). Normal tip contact often has button state `none`, because Android does not set `BUTTON_PRIMARY` for a plain stylus touch.
 - Air Action `F8` is handled on key down while this activity is in front. Samsung leaves new apps off until you enable them under S Pen → Air actions. There is no `enable_key`; Samsung issues that only on request, so the action is not on by default.
 
 ## What should fail, and that failure is the result
 
-- Pressing the barrel button while Obsidian is in front does not update this app and does not write a file. Air Actions are routed to the foreground app. The Remote SDK is also limited to the foreground activity.
-- After you leave this screen, the process is eligible to stop. Nothing is scheduled.
-- With the reboot switch off, a restart does not start this process. The manifest receiver is disabled.
-- With the switch on, Android can still refuse to open the activity. Boot is not one of the [background activity launch exemptions](https://developer.android.com/guide/components/activities/background-starts). Logcat from `ActivityTaskManager` reports a blocked background activity launch. The receiver then exits.
+- Pressing the barrel button while Obsidian is in front does not update this app and does not write a file. Air Actions are routed to the foreground app. The Remote SDK is also limited to the foreground activity. The resident service does not change that.
+- With **Keep the bridge running** off, a restart does not start this process. The manifest receiver is disabled.
+- `obsidian://` from the background service is a worse channel. Android’s [background activity launch rules](https://developer.android.com/guide/components/activities/background-starts) can block it. The plugin opens the localhost connection itself, so no activity has to be started.
 - An Obsidian vault in app storage (`Android/data/md.obsidian/...`) cannot be granted. Android 11+ also blocks choosing the storage root or the Download directory itself. Use a device-storage vault and select that vault folder. See [Obsidian for Android](https://obsidian.md/help/android) and the [Storage Access Framework limits](https://developer.android.com/training/data-storage/shared/documents-files).
 
 ## Why the WebView lost the barrel button
@@ -55,9 +53,9 @@ The [S Pen Remote SDK FAQ](https://developer.samsung.com/galaxy-spen-remote/faq.
 
 ## Power
 
-There is no foreground service, wake lock, alarm, or poll. [Android’s foreground-service rules](https://developer.android.com/develop/background-work/services/fgs/restrictions-bg-start) are a reason to avoid one, and they would not grant pen events anyway. `BOOT_COMPLETED` is allowed as a manifest broadcast ([implicit broadcast exemptions](https://developer.android.com/develop/background-work/background-tasks/broadcasts/broadcast-exceptions)) and is still one short start, not a resident.
+The process is resident while **Keep the bridge running** is on. LibrePods uses the same Android mechanism: a foreground service with `foregroundServiceType="specialUse"`, `START_STICKY`, and a low-importance ongoing notification. Android requires that notification; it has no sound and no vibration. Idle work is one localhost accept loop and a 20-second comment frame only while a plugin is connected. There is no wake lock and no sensor.
 
-Leaving the app in Samsung’s “Never sleeping” list would keep a process that cannot see the pen. The reboot switch does not require that.
+`BOOT_COMPLETED` may start this service type. Android 15 blocks several other foreground-service types from that broadcast, not `specialUse`. See [foreground service background-start limits](https://developer.android.com/develop/background-work/services/fgs/restrictions-bg-start). Samsung can still freeze the process. **Allow unrestricted battery** asks the system to leave it alone. That still does not deliver the S Pen button into this process.
 
 ## What would actually fix the eraser
 

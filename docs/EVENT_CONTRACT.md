@@ -1,6 +1,20 @@
-# Vault event contract
+# Event contract
 
-The companion and `excalidraw-stylus-controls` share one mailbox file. The plugin side is not implemented yet. Until it validates this envelope and shares the pairing secret, a written file does not change Obsidian.
+The companion and `excalidraw-stylus-controls` share one signed envelope. The plugin side is not implemented yet. Until it validates this envelope and shares the pairing secret, neither channel changes Obsidian.
+
+## Localhost stream
+
+While the bridge service is running it listens only on `127.0.0.1:47631`.
+
+- `GET /health` returns `{"ok":true}` with no token.
+- `GET /events?token=<pairing-code>` stays open as `text/event-stream`. The token is the base64url pairing code from **Copy pairing code**, with no padding.
+- Each command is one SSE record: `data: ` plus the signed JSON object, then a blank line.
+- A `: ping` comment every 20 seconds keeps the connection open while a plugin is connected.
+- A wrong token gets HTTP 401 and the socket closes.
+
+The plugin opens this connection itself while an Excalidraw view is active. That works with Obsidian in front, because the plugin makes the request. An `obsidian://` intent from the service would be a background activity launch and Android can block it.
+
+The vault file below is the same JSON, written as well, so a plugin that cannot open localhost can still poll.
 
 ## Path
 

@@ -18,11 +18,12 @@ Install the debug build. Use an Obsidian vault stored in device storage, not app
 | Pairing code | Copy the pairing code, then send again. | The clipboard gets one base64url string. The status line does not print the secret. The new file’s `sequence` is higher. |
 | Native barrel bit | With this app open, hover, hold the barrel, touch the glass, lift. | The log shows `STYLUS` and `STYLUS_PRIMARY(0x20)` when the barrel is held, including during contact if the digitizer reports it. Tip-only contact is often `buttons=none`. No coordinates are logged. |
 | Air Action | Enable this app’s Air action in S Pen settings. Leave this screen in front. Click the side button once. | One new `open-menu` file. A second click gets the next sequence. |
-| Leave the app | Switch to Obsidian and click the barrel, including while drawing. | This app’s log does not grow. No new file is written from that press. |
-| Reboot switch off | Leave the switch off and restart the tablet. | This process does not start. |
-| Reboot switch on | Turn the switch on, restart, unlock. | This screen opens once, and the status says it opened after restart. If it does not, `ActivityTaskManager` in logcat reports a blocked background activity launch. No notification or service remains. |
+| Leave the app | Switch to Obsidian and click the barrel, including while drawing. | The quiet notification remains. This app’s button log does not grow, and the barrel press does not write a file. |
+| Notification command | With Obsidian in front, pull the shade and tap **Open menu**. | `pending.json` updates. A plugin connected to `127.0.0.1:47631` receives the same JSON. |
+| Keep running | Leave the switch on, leave the app, restart, unlock. | The notification comes back without opening the screen. If Samsung froze the app, allow unrestricted battery and repeat. |
+| Switch off | Turn **Keep the bridge running** off and restart. | The notification is gone and the process does not start. |
 | Plugin effect | Send a test with an Excalidraw note open. | Obsidian does not open the stylus menu. The plugin does not consume the file yet. |
 
-## Do not “fix” a blocked reboot by keeping the app awake
+## Battery
 
-Samsung’s Sleeping apps list can swallow `BOOT_COMPLETED`. Allowing the boot broadcast is enough. Putting this app in Never sleeping keeps a process that still cannot see the pen while Obsidian is open. Do not add a foreground service to get around a blocked activity launch.
+Unrestricted battery keeps the service from being frozen. It does not make the S Pen button arrive while Obsidian is open. The notification is required by Android for a foreground service; its channel is low importance and silent.

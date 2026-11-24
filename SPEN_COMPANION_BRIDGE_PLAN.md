@@ -2,7 +2,7 @@
 
 ## Status after review (November 2026)
 
-Source review plus host tests, not a tablet run. The app can write one signed `open-menu` file and can show native button bits while it is the foreground screen. It does not keep a listener after you leave. The reboot switch opens the screen once; it is not a resident service. A resident listener would not receive the barrel button while Obsidian is in front. See [docs/DEVICE_FEASIBILITY.md](docs/DEVICE_FEASIBILITY.md).
+Source review plus host tests, not a tablet run. The app now stays resident, in the LibrePods shape: a sticky foreground service, a quiet notification, and a localhost event stream on `127.0.0.1:47631`. The vault file is still written. The resident process does not receive the barrel button while Obsidian is in front. See [docs/DEVICE_FEASIBILITY.md](docs/DEVICE_FEASIBILITY.md).
 
 ## Decision
 
