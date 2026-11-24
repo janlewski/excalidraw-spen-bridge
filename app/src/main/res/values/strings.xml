@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">S Pen Bridge</string>
+    <string name="air_actions_label">Excalidraw Bridge</string>
+    <string name="open_menu_label">Open Excalidraw stylus menu</string>
+</resources>

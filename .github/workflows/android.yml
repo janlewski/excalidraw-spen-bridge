@@ -1,0 +1,77 @@
+name: Android
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version name, for example 0.2.0-diag"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: gradle
+      - name: Unit tests and debug APK
+        run: |
+          set +e
+          chmod +x ./gradlew
+          for attempt in 1 2 3 4 5; do
+            ./gradlew testDebugUnitTest assembleDebug && exit 0
+            echo "Gradle failed on attempt ${attempt}; Maven Central may be rate-limiting."
+            sleep $((attempt * 20))
+          done
+          exit 1
+
+  release:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: gradle
+      - name: Unit tests and signed release APK
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set +e
+          chmod +x ./gradlew
+          for attempt in 1 2 3 4 5; do
+            ./gradlew testDebugUnitTest assembleRelease -PversionName="${{ inputs.version }}" && exit 0
+            echo "Gradle failed on attempt ${attempt}; Maven Central may be rate-limiting."
+            sleep $((attempt * 20))
+          done
+          exit 1
+      - name: Publish pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          apk="$(find app/build/outputs/apk/release -name '*.apk' | head -n 1)"
+          cp "$apk" "spen-bridge-${VERSION}.apk"
+          prerelease=""
+          if [[ "$VERSION" == *-* ]]; then
+            prerelease="--prerelease"
+          fi
+          gh release create "$VERSION" \
+            --title "$VERSION" \
+            --notes "Diagnostic S Pen bridge build. Turn off Auto Blocker before installing, then you can turn it back on." \
+            $prerelease \
+            "spen-bridge-${VERSION}.apk"

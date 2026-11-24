@@ -1,0 +1,14 @@
+add device 1: /dev/input/event1
+  name:     "sec_touchscreen"
+  events:
+    KEY (0001): BTN_TOUCH
+    ABS (0003): ABS_MT_POSITION_X ABS_MT_POSITION_Y ABS_MT_PRESSURE
+add device 2: /dev/input/event2
+  name:     "gpio-keys"
+  events:
+    KEY (0001): KEY_POWER
+add device 5: /dev/input/event5
+  name:     "sec_e-pen"
+  events:
+    KEY (0001): BTN_TOOL_PEN BTN_TOUCH BTN_STYLUS BTN_STYLUS2
+    ABS (0003): ABS_X ABS_Y ABS_PRESSURE
