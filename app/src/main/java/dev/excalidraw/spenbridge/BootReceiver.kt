@@ -5,16 +5,14 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 
-/** One-shot after reboot. The receiver is disabled until the user opts in, so a normal boot does not start the process. */
+/** Starts the resident bridge after unlock. Disabled while the keep-running switch is off. */
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
         if (!BootStart.shouldOpen(BootStart.isEnabled(context), intent?.action)) return
-        val launch = Intent(context, MainActivity::class.java)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-            .putExtra(BootStart.EXTRA_OPENED_FROM_REBOOT, true)
-        runCatching { context.startActivity(launch) }
+        val service = Intent(context, BridgeService::class.java)
+        runCatching { context.startForegroundService(service) }
             .onFailure { error ->
-                Log.i(TAG, "Open after restart was blocked: ${error.javaClass.simpleName}")
+                Log.i(TAG, "Bridge service was not started after restart: ${error.javaClass.simpleName}")
             }
     }
 

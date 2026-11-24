@@ -1,9 +1,12 @@
 package dev.excalidraw.spenbridge
 
+import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.view.KeyEvent
@@ -16,21 +19,21 @@ import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.SwitchCompat
-import java.util.Base64
+import androidx.core.content.ContextCompat
 import java.util.ArrayDeque
-import java.util.UUID
-import java.util.concurrent.ExecutorService
-import java.util.concurrent.Executors
+import java.util.Base64
 
 class MainActivity : AppCompatActivity() {
     private lateinit var status: TextView
     private lateinit var inputLog: TextView
     private lateinit var bridge: VaultBridge
     private lateinit var secrets: SecretStore
-    private lateinit var statePrefs: android.content.SharedPreferences
-    private val bridgeWriter: ExecutorService = Executors.newSingleThreadExecutor()
     private val inputLines = ArrayDeque<String>()
     private var lastLoggedButtons: Int? = null
+    private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) startBridgeService()
+        else renderStatus("Allow notifications to keep the bridge running. Android requires that quiet notification.")
+    }
     private val vaultPicker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri == null) return@registerForActivityResult
         runCatching { bridge.setTree(uri) }
@@ -42,7 +45,6 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         bridge = VaultBridge(applicationContext)
         secrets = SecretStore(applicationContext)
-        statePrefs = getSharedPreferences(BridgeState.PREFS, MODE_PRIVATE)
         BootStart.setEnabled(this, BootStart.isEnabled(this))
         setContentView(buildContent())
         val secretMessage = runCatching { secrets.loadOrCreate() }.fold(
@@ -50,12 +52,8 @@ class MainActivity : AppCompatActivity() {
             onFailure = { "Pairing secret error: ${it.message}" },
         )
         val vault = if (bridge.selectedTree() == null) "not selected" else "selected"
-        val reboot = if (intent.getBooleanExtra(BootStart.EXTRA_OPENED_FROM_REBOOT, false)) {
-            " Opened after restart."
-        } else {
-            ""
-        }
-        renderStatus("Ready. $secretMessage Vault: $vault.$reboot")
+        renderStatus("Ready. $secretMessage Vault: $vault.")
+        if (BootStart.isEnabled(this)) ensureBridgeRunning()
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
@@ -80,11 +78,6 @@ class MainActivity : AppCompatActivity() {
         return super.dispatchGenericMotionEvent(event)
     }
 
-    override fun onDestroy() {
-        bridgeWriter.shutdown()
-        super.onDestroy()
-    }
-
     private fun buildContent(): View = ScrollView(this).apply {
         addView(LinearLayout(this@MainActivity).apply {
             orientation = LinearLayout.VERTICAL
@@ -95,7 +88,7 @@ class MainActivity : AppCompatActivity() {
                 textSize = 24f
             })
             addView(TextView(context).apply {
-                text = "Signs one open-menu command into a vault you select. Samsung delivers S Pen actions only while this screen is in front. Nothing keeps running after you leave, so this uses no power in the background."
+                text = "Stays running under a quiet notification, the way a Bluetooth companion does. The plugin connects to 127.0.0.1:${BridgeEndpoint.PORT}. Samsung still delivers the S Pen button only while this screen is in front."
                 setPadding(0, pad / 2, 0, pad / 2)
             })
             addView(Button(context).apply {
@@ -111,29 +104,40 @@ class MainActivity : AppCompatActivity() {
                 setOnClickListener { copyPairingCode() }
             })
             addView(Button(context).apply {
+                text = "Allow unrestricted battery"
+                setOnClickListener {
+                    startActivity(
+                        Intent(
+                            Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                            Uri.parse("package:$packageName"),
+                        ),
+                    )
+                }
+            })
+            addView(Button(context).apply {
                 text = "Open companion app settings"
                 setOnClickListener {
                     startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
                 }
             })
             addView(SwitchCompat(context).apply {
-                text = "Open this screen after the tablet restarts"
+                text = "Keep the bridge running"
                 isSingleLine = false
                 isChecked = BootStart.isEnabled(context)
                 setPadding(0, pad / 2, 0, 0)
                 setOnCheckedChangeListener { _, checked ->
                     BootStart.setEnabled(this@MainActivity, checked)
-                    renderStatus(
-                        if (checked) {
-                            "Will try to open once after the next restart. Android can block that launch. The app still stops when you leave it."
-                        } else {
-                            "Stays closed after a restart."
-                        },
-                    )
+                    if (checked) {
+                        ensureBridgeRunning()
+                        renderStatus("Bridge stays up, including after a restart. It waits idle until a command is sent.")
+                    } else {
+                        stopService(Intent(this@MainActivity, BridgeService::class.java))
+                        renderStatus("Bridge stopped. It will not come back after a restart.")
+                    }
                 }
             })
             addView(TextView(context).apply {
-                text = "Off by default. The reboot receiver is disabled until you turn this on. It does not leave a listener running."
+                text = "On by default. A quiet notification stays in the shade. The process does not poll or draw while it waits. Samsung can still freeze it unless battery use is unrestricted."
                 setPadding(0, pad / 4, 0, 0)
             })
             status = TextView(context).apply {
@@ -167,33 +171,26 @@ class MainActivity : AppCompatActivity() {
         inputLog.text = inputLines.joinToString("\n")
     }
 
-    private fun sendOpenMenu(origin: String) {
-        renderStatus("Writing signed open-menu…")
-        bridgeWriter.execute {
-            val result = runCatching {
-                val secret = secrets.loadOrCreate()
-                val sequence = statePrefs.getLong(BridgeState.KEY_SEQUENCE, 0) + 1
-                val event = BridgeEvent(deviceId(), sequence, System.currentTimeMillis(), BridgeAction.OPEN_MENU)
-                bridge.writePending(event, secret).getOrThrow()
-                statePrefs.edit().putLong(BridgeState.KEY_SEQUENCE, sequence).commit()
-                sequence
-            }
-            runOnUiThread {
-                if (isDestroyed) return@runOnUiThread
-                result.onSuccess { sequence ->
-                    renderStatus("$origin wrote open-menu #$sequence to ${BridgePaths.pendingDisplayPath()}")
-                }.onFailure { failure ->
-                    renderStatus("Write failed: ${failure.message}")
-                }
-            }
+    private fun ensureBridgeRunning() {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+            return
         }
+        startBridgeService()
     }
 
-    private fun deviceId(): String {
-        statePrefs.getString(BridgeState.KEY_DEVICE_ID, null)?.let { return it }
-        val created = UUID.randomUUID().toString()
-        statePrefs.edit().putString(BridgeState.KEY_DEVICE_ID, created).commit()
-        return created
+    private fun startBridgeService() {
+        ContextCompat.startForegroundService(this, Intent(this, BridgeService::class.java))
+    }
+
+    private fun sendOpenMenu(origin: String) {
+        val command = Intent(this, BridgeService::class.java)
+            .setAction(BridgeService.ACTION_OPEN_MENU)
+            .putExtra(BridgeService.EXTRA_ORIGIN, origin)
+        ContextCompat.startForegroundService(this, command)
+        renderStatus("$origin sent open-menu to the running bridge. A connected plugin gets it on localhost; the vault file is updated too.")
     }
 
     private fun copyPairingCode() {

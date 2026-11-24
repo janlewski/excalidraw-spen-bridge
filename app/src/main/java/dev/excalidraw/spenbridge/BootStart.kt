@@ -6,17 +6,15 @@ import android.content.Intent
 import android.content.pm.PackageManager
 
 internal object BootStart {
-    const val EXTRA_OPENED_FROM_REBOOT = "opened-from-reboot"
-
-    /** Opens only for the post-unlock boot broadcast, and only when the user opted in. */
+    /** Starts the resident service only for the post-unlock boot broadcast, and only while keep-running is on. */
     fun shouldOpen(enabled: Boolean, action: String?): Boolean =
         enabled && action == Intent.ACTION_BOOT_COMPLETED
 
     fun isEnabled(context: Context): Boolean =
-        prefs(context).getBoolean(BridgeState.KEY_OPEN_AFTER_REBOOT, false)
+        prefs(context).getBoolean(BridgeState.KEY_KEEP_RUNNING, true)
 
     fun setEnabled(context: Context, enabled: Boolean) {
-        prefs(context).edit().putBoolean(BridgeState.KEY_OPEN_AFTER_REBOOT, enabled).apply()
+        prefs(context).edit().putBoolean(BridgeState.KEY_KEEP_RUNNING, enabled).apply()
         val state = if (enabled) {
             PackageManager.COMPONENT_ENABLED_STATE_ENABLED
         } else {
