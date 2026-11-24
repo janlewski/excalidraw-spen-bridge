@@ -38,7 +38,8 @@ android {
     if (!keystoreBase64.isNullOrBlank()) {
         val keystoreFile = layout.buildDirectory.file("ci-keystore.jks").get().asFile
         keystoreFile.parentFile.mkdirs()
-        keystoreFile.writeBytes(Base64.getDecoder().decode(keystoreBase64))
+        // macOS base64 wraps at 76 columns. The basic decoder rejects those newlines.
+        keystoreFile.writeBytes(Base64.getMimeDecoder().decode(keystoreBase64))
         signingConfigs {
             create("ciRelease") {
                 storeFile = keystoreFile
