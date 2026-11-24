@@ -9,8 +9,16 @@ object BridgeEndpoint {
     const val PORT = 47631
     const val EVENTS_PATH = "/events"
     const val HEALTH_PATH = "/health"
+    const val PEN_PATH = "/v1/pen"
+    val ALLOWED_ORIGINS: Set<String> = setOf(
+        "http://localhost",
+        "capacitor://localhost",
+        "app://obsidian.md",
+    )
 
     fun eventsUrl(token: String): String = "http://$HOST:$PORT$EVENTS_PATH?token=$token"
+
+    fun originAllowed(origin: String?): Boolean = origin == null || origin in ALLOWED_ORIGINS
 }
 
 internal fun tokensMatch(expected: String, presented: String?): Boolean {

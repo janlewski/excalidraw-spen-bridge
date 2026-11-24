@@ -1,5 +1,7 @@
 # S Pen Companion Bridge: pragmatic architecture plan
 
+> Superseded by `feat/shizuku-pen-input`. The resident localhost channel stays. Mid-stroke barrel state now comes from the kernel evdev node through Shizuku, not from Air Actions. This file is the earlier plan and is not the current design.
+
 ## Status after review (November 2026)
 
 Source review plus host tests, not a tablet run. The app now stays resident, in the LibrePods shape: a sticky foreground service, a quiet notification, and a localhost event stream on `127.0.0.1:47631`. The vault file is still written. The resident process does not receive the barrel button while Obsidian is in front. See [docs/DEVICE_FEASIBILITY.md](docs/DEVICE_FEASIBILITY.md).

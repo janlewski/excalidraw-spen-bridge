@@ -16,6 +16,10 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import androidx.appcompat.app.AlertDialog
+import dev.excalidraw.spenbridge.diag.DiagnosticsActivity
+import dev.excalidraw.spenbridge.ws.PenAuth
+import rikka.shizuku.Shizuku
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.SwitchCompat
@@ -88,8 +92,12 @@ class MainActivity : AppCompatActivity() {
                 textSize = 24f
             })
             addView(TextView(context).apply {
-                text = "Stays running under a quiet notification, the way a Bluetooth companion does. The plugin connects to 127.0.0.1:${BridgeEndpoint.PORT}. Samsung still delivers the S Pen button only while this screen is in front."
+                text = "Stays running under a quiet notification. The plugin connects to ws://127.0.0.1:${BridgeEndpoint.PORT}/v1/pen. The side button is read through Shizuku while Obsidian is in front. Turn off Samsung Air command so a hover press is not swallowed."
                 setPadding(0, pad / 2, 0, pad / 2)
+            })
+            addView(Button(context).apply {
+                text = "Diagnostics"
+                setOnClickListener { startActivity(Intent(this@MainActivity, DiagnosticsActivity::class.java)) }
             })
             addView(Button(context).apply {
                 text = "Choose Obsidian vault"
@@ -102,6 +110,22 @@ class MainActivity : AppCompatActivity() {
             addView(Button(context).apply {
                 text = "Copy pairing code"
                 setOnClickListener { copyPairingCode() }
+            })
+            addView(Button(context).apply {
+                text = "Reset pairing"
+                setOnClickListener { confirmResetPairing() }
+            })
+            addView(Button(context).apply {
+                text = "Grant Shizuku access"
+                setOnClickListener { grantShizuku() }
+            })
+            addView(Button(context).apply {
+                text = "Open Shizuku"
+                setOnClickListener {
+                    val launch = packageManager.getLaunchIntentForPackage("moe.shizuku.privileged.api")
+                    if (launch == null) renderStatus("Shizuku is not installed.")
+                    else startActivity(launch)
+                }
             })
             addView(Button(context).apply {
                 text = "Allow unrestricted battery"
@@ -201,7 +225,50 @@ class MainActivity : AppCompatActivity() {
         val code = Base64.getUrlEncoder().withoutPadding().encodeToString(secret)
         val clipboard = getSystemService(ClipboardManager::class.java)
         clipboard.setPrimaryClip(ClipData.newPlainText("S Pen bridge pairing code", code))
-        renderStatus("Pairing code copied. It is not written into the vault.")
+        val finger = PenAuth.fingerprint(secret)
+        renderStatus("Pairing code copied. Fingerprint $finger. It is not written into the vault.")
+    }
+
+    private fun confirmResetPairing() {
+        AlertDialog.Builder(this)
+            .setTitle("Reset pairing")
+            .setMessage("Connected plugins will show a wrong pairing code until you paste the new one.")
+            .setPositiveButton("Reset") { _, _ ->
+                runCatching { secrets.rotate() }.onFailure { failure ->
+                    renderStatus("Could not rotate pairing: ${failure.message}")
+                    return@setPositiveButton
+                }
+                ContextCompat.startForegroundService(
+                    this,
+                    Intent(this, BridgeService::class.java).setAction(BridgeService.ACTION_RESET_PAIRING),
+                )
+                renderStatus("Pairing reset. Copy the new code. Old clients were disconnected.")
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun grantShizuku() {
+        try {
+            if (!Shizuku.pingBinder()) {
+                renderStatus("Start Shizuku with Wireless debugging, then grant access.")
+                return
+            }
+            Shizuku.addRequestPermissionResultListener { _, result ->
+                if (result == PackageManager.PERMISSION_GRANTED) {
+                    ContextCompat.startForegroundService(
+                        this,
+                        Intent(this, BridgeService::class.java).setAction(BridgeService.ACTION_RECONNECT_PEN),
+                    )
+                    renderStatus("Shizuku access granted.")
+                } else {
+                    renderStatus("Shizuku access was not granted.")
+                }
+            }
+            Shizuku.requestPermission(1)
+        } catch (error: Exception) {
+            renderStatus("Shizuku is not available: ${error.message}")
+        }
     }
 
     private fun renderStatus(message: String) {

@@ -56,7 +56,9 @@ class BridgeEventTest {
     @Test fun localhostRejectsABadTokenAndStreamsAGoodOne() {
         assertFalse(tokensMatch("secret", "nope"))
         assertTrue(tokensMatch("secret", "secret"))
-        val hub = LoopbackHub(0) { "secret" }
+        val secretBytes = "secret".toByteArray()
+        val token = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(secretBytes)
+        val hub = LoopbackHub(0, { secretBytes })
         hub.start()
         try {
             Socket(BridgeEndpoint.HOST, hub.boundPort).use { denied ->
@@ -67,15 +69,19 @@ class BridgeEventTest {
             }
             Socket(BridgeEndpoint.HOST, hub.boundPort).use { allowed ->
                 allowed.soTimeout = 2000
-                allowed.getOutputStream().write("GET /events?token=secret HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n".toByteArray())
+                allowed.getOutputStream().write("GET /events?token=$token HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n".toByteArray())
                 val deadline = System.currentTimeMillis() + 2000
                 while (hub.clientCount() == 0 && System.currentTimeMillis() < deadline) Thread.sleep(10)
                 assertEquals(1, hub.clientCount())
                 hub.publish("{\"action\":\"open-menu\"}")
+                val buffer = StringBuilder()
                 val body = ByteArray(512)
-                val count = allowed.getInputStream().read(body)
-                val text = String(body, 0, count, Charsets.UTF_8)
-                assertTrue(text.contains("data: {\"action\":\"open-menu\"}"))
+                while (!buffer.contains("open-menu")) {
+                    val count = allowed.getInputStream().read(body)
+                    if (count < 0) break
+                    buffer.append(String(body, 0, count, Charsets.UTF_8))
+                }
+                assertTrue(buffer.toString().contains("data: {\"action\":\"open-menu\"}"))
             }
         } finally {
             hub.stop()

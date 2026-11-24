@@ -5,14 +5,14 @@ Private Android companion for Samsung tablets. It writes a signed, allowlisted c
 ## Current scope
 
 - Kotlin Android app; min SDK 26, target/compile SDK 36.
-- Vault selection through Android's Storage Access Framework: no broad storage, network, overlay, or accessibility permissions.
+- Vault selection through Android's Storage Access Framework. The app requests `INTERNET` only so the loopback `ServerSocket` can bind. It still listens on `127.0.0.1` and nowhere else.
 - A sticky foreground service, on by default, with a quiet ongoing notification. It comes back after reboot. **Allow unrestricted battery** is there because Samsung otherwise freezes background work. Idle cost is a localhost accept loop, not a sensor or a wake lock.
-- The plugin connects to `http://127.0.0.1:47631/events?token=<pairing-code>` and receives server-sent events. The same signed JSON is also written into the vault.
+- The plugin connects to `ws://127.0.0.1:47631/v1/pen`. The pairing code never appears in the URL. `GET /events` remains for the old signed `open-menu` envelope and is deprecated. See [docs/PEN_BRIDGE_PROTOCOL.md](docs/PEN_BRIDGE_PROTOCOL.md).
 - Keystore-wrapped local pairing secret; HMAC-SHA-256 event envelopes; monotonic sequence values. **Copy pairing code** puts the secret on the clipboard for the plugin.
 - A manual signed `open-menu` test, a notification action with the same effect, a native button log while this screen is in front, and a Samsung Air Actions KeyEvent declaration (F8).
 - Writes `.obsidian/plugins/excalidraw-stylus-controls/spen-bridge/pending.json`.
 
-This stays running so the plugin has a channel while Obsidian is open. It is still **not** an automatic barrel-button eraser. Samsung delivers Air Actions and Remote SDK events to the foreground app only, so the resident process does not see the barrel button while Obsidian is on screen. Details are in [docs/DEVICE_FEASIBILITY.md](docs/DEVICE_FEASIBILITY.md).
+The side button is read from the kernel evdev node by a Shizuku UserService running as the shell user. The reader never grabs the device and never forwards touch coordinates; only the configured key code leaves that process. Air Actions and the Remote SDK are still foreground-only. If this firmware denies the evdev read, Diagnostics says so and the plugin keeps the hover-latch fallback. Setup: install Shizuku, start it with Wireless debugging, grant access, then compare fingerprints after pasting the pairing code. Turn off Samsung Air command. Details are in [docs/DEVICE_FEASIBILITY.md](docs/DEVICE_FEASIBILITY.md) and [docs/TESTER-GUIDE.md](docs/TESTER-GUIDE.md).
 
 ## Pairing contract still required in the plugin
 

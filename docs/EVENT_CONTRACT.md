@@ -1,6 +1,8 @@
 # Event contract
 
-The companion and `excalidraw-stylus-controls` share one signed envelope. The plugin side is not implemented yet. Until it validates this envelope and shares the pairing secret, neither channel changes Obsidian.
+New clients use the WebSocket on `/v1/pen`. The signed SSE envelope below is the legacy `open-menu` path and is deprecated. The pen protocol, including the shared test vectors, is [PEN_BRIDGE_PROTOCOL.md](PEN_BRIDGE_PROTOCOL.md).
+
+The companion and `excalidraw-stylus-controls` still share the signed `open-menu` envelope for the vault file and the old `/events` stream.
 
 ## Localhost stream
 

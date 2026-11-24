@@ -4,15 +4,13 @@ Reviewed in November 2026 from Samsung’s S Pen docs, Android’s input and sto
 
 ## Verdict
 
-The bridge process stays running. LibrePods does this with a sticky foreground service and a quiet ongoing notification, and this app uses that same shape: `START_STICKY`, a low-importance notification, and a boot receiver that starts the service after unlock. While it waits it does not poll, scan, or hold a wake lock. A localhost event stream on `127.0.0.1:47631` is how the plugin receives a command without the vault file and without this app taking the screen.
+Air Actions and the S Pen Remote SDK still deliver only to the foreground app. That limit is unchanged, and it is why a resident notification cannot see the barrel button by itself.
 
-That resident process still does not receive the S Pen button while Obsidian is the app on screen. Samsung delivers Air Actions and Remote SDK events only to the resumed foreground app. The service keeps the channel alive. It does not move the pen events.
-
-Holding the barrel button while drawing in Obsidian cannot become a temporary eraser through this companion.
+The evdev node is a different route. `/dev/input/eventN` is group `input`, and the ADB shell user is in that group. Shizuku runs a UserService as that user, so the bridge can read `EV_KEY BTN_STYLUS` while Obsidian is in front, without grabbing the device. This works only when the vendor SELinux policy lets `shell` read `input_device`. One OPPO build returned zero bytes. The diagnostics access probe is how a tester report answers that for a given One UI version. If the probe says `selinux-denied`, `EACCES`, or `zero-bytes`, the plugin stays on the hover-latch fallback.
 
 ## What should work on a device
 
-- Choose a vault folder with the system picker. The app stores a persistable tree grant and requests no broad storage, network, overlay, or accessibility permission.
+- Choose a vault folder with the system picker. The app stores a persistable tree grant. It requests `INTERNET` so the loopback socket can bind, and it does not request storage, overlay, or accessibility permissions.
 - **Send signed test** writes `.obsidian/plugins/excalidraw-stylus-controls/spen-bridge/pending.json`. The write goes to `pending-incoming.json` first. That name ends in `.json` because Android’s `FileUtils.splitFileName` appends the MIME extension when the display name does not already match `application/json`.
 - **Copy pairing code** puts the local 32-byte secret on the clipboard as base64url. The plugin uses that token on the localhost stream. The status line does not print the secret.
 - With **Keep the bridge running** on, leaving the app leaves a quiet “S Pen bridge” notification. The notification action **Open menu** writes the vault file and pushes the same signed JSON to every connected plugin. After a restart the boot receiver starts the service again. **Allow unrestricted battery** is the Samsung step that stops the system from freezing that service.
@@ -21,7 +19,7 @@ Holding the barrel button while drawing in Obsidian cannot become a temporary er
 
 ## What should fail, and that failure is the result
 
-- Pressing the barrel button while Obsidian is in front does not update this app and does not write a file. Air Actions are routed to the foreground app. The Remote SDK is also limited to the foreground activity. The resident service does not change that.
+- Air Actions and the Remote SDK still do not deliver the barrel button while Obsidian is in front. The evdev reader is the path that can. If the access probe is denied, that press still does not reach the plugin, and the report says why.
 - With **Keep the bridge running** off, a restart does not start this process. The manifest receiver is disabled.
 - `obsidian://` from the background service is a worse channel. Android’s [background activity launch rules](https://developer.android.com/guide/components/activities/background-starts) can block it. The plugin opens the localhost connection itself, so no activity has to be started.
 - An Obsidian vault in app storage (`Android/data/md.obsidian/...`) cannot be granted. Android 11+ also blocks choosing the storage root or the Download directory itself. Use a device-storage vault and select that vault folder. See [Obsidian for Android](https://obsidian.md/help/android) and the [Storage Access Framework limits](https://developer.android.com/training/data-storage/shared/documents-files).

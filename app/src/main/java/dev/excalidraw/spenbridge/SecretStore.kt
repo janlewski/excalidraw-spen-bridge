@@ -34,6 +34,12 @@ class SecretStore(context: Context) {
     }
 
     /** Creates a secret only when none is stored. A failed decrypt must not silently rotate pairing. */
+    fun rotate(): ByteArray {
+        val created = ByteArray(32).also(SecureRandom()::nextBytes)
+        save(created)
+        return created
+    }
+
     fun loadOrCreate(): ByteArray {
         load()?.let { return it }
         if (prefs.contains("secret")) {
