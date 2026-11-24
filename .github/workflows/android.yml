@@ -22,8 +22,17 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
+          cache: gradle
       - name: Unit tests and debug APK
-        run: chmod +x ./gradlew && ./gradlew testDebugUnitTest assembleDebug
+        run: |
+          set +e
+          chmod +x ./gradlew
+          for attempt in 1 2 3 4 5; do
+            ./gradlew testDebugUnitTest assembleDebug && exit 0
+            echo "Gradle failed on attempt ${attempt}; Maven Central may be rate-limiting."
+            sleep $((attempt * 20))
+          done
+          exit 1
 
   release:
     if: github.event_name == 'workflow_dispatch'
@@ -34,13 +43,22 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
+          cache: gradle
       - name: Unit tests and signed release APK
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: chmod +x ./gradlew && ./gradlew testDebugUnitTest assembleRelease -PversionName="${{ inputs.version }}"
+        run: |
+          set +e
+          chmod +x ./gradlew
+          for attempt in 1 2 3 4 5; do
+            ./gradlew testDebugUnitTest assembleRelease -PversionName="${{ inputs.version }}" && exit 0
+            echo "Gradle failed on attempt ${attempt}; Maven Central may be rate-limiting."
+            sleep $((attempt * 20))
+          done
+          exit 1
       - name: Publish pre-release
         env:
           GH_TOKEN: ${{ github.token }}
